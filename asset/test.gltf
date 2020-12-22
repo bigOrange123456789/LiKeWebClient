@@ -1,0 +1,115 @@
+{
+  "accessors": [
+    {
+      "name": "Node-Mesh_0_positions",
+      "componentType": 5126,
+      "count": 18,
+      "min": [
+        12550,
+        7250,
+        762
+      ],
+      "max": [
+        22450,
+        12170,
+        2162
+      ],
+      "type": "VEC3",
+      "bufferView": 0,
+      "byteOffset": 0
+    },
+    {
+      "name": "Node-Mesh_0_indices",
+      "componentType": 5123,
+      "count": 96,
+      "min": [
+        0
+      ],
+      "max": [
+        17
+      ],
+      "type": "SCALAR",
+      "bufferView": 1,
+      "byteOffset": 0
+    }
+  ],
+  "asset": {
+    "generator": "obj2gltf",
+    "version": "2.0"
+  },
+  "buffers": [
+    {
+      "name": "119141=IfcBeam",
+      "byteLength": 408,
+      "uri": "data:application/octet-stream;base64,ABhERgCQ4kUAIAdFAGSvRgAQ70UAIAdFABhERgAQ70UAIAdFAGSvRgCQ4kUAIAdFABhERgDoN0YAIAdFAGSvRgAoPkYAIAdFABhERgAoPkYAIAdFAGSvRgDoN0YAIAdFAGSvRgAQ70UzU4dEABhERgAQ70UzU4dEAGSvRgAoPkYAgD5EABhERgAoPkYAgD5EAGSvRgC4F0YAwIREABhERgC4F0YAwIREAGSvRgDoN0YzU4dEABhERgDoN0YzU4dEABhERgCQ4kUAgD5EAGSvRgCQ4kUAgD5EAAABAAIAAwABAAAABAAFAAYABwAFAAQAAgAIAAkAAQAIAAIABgAKAAsABQAKAAYACQAMAA0ACAAMAAkADQAOAA8ADAAOAA0ADwAHAAQADgAHAA8AEAADAAAAEQADABAACwARABAACgARAAsAAAAJABAACQANABAADQALABAADQAPAAsADwAGAAsAAAACAAkABAAGAA8ABQAOAAoADgAMAAoADAARAAoADAAIABEACAADABEABQAHAA4AAQADAAgA"
+    }
+  ],
+  "bufferViews": [
+    {
+      "name": "bufferView_0",
+      "buffer": 0,
+      "byteLength": 216,
+      "byteOffset": 0,
+      "byteStride": 12,
+      "target": 34962
+    },
+    {
+      "name": "bufferView_1",
+      "buffer": 0,
+      "byteLength": 192,
+      "byteOffset": 216,
+      "target": 34963
+    }
+  ],
+  "materials": [
+    {
+      "name": "default",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.5,
+          0.5,
+          0.5,
+          1
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 1
+      },
+      "emissiveFactor": [
+        0,
+        0,
+        0
+      ],
+      "alphaMode": "OPAQUE",
+      "doubleSided": false
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Node-Mesh",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0
+          },
+          "indices": 1,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "Node",
+      "mesh": 0
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ]
+    }
+  ]
+}
