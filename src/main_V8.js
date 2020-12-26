@@ -1,6 +1,6 @@
 //orange：设置资源列表管理对象
 function ListStorage(){
-    this.cameraStatus=[];//orange：成员为字符串//每个字符串分为6段
+    this.cameraStatus=[];//orange：成员为字符串//每个字符串分为7段
     this.cameraStatusCache1=[];//orange：1号缓存区存放服务器发送的数据，2号缓存区存放其他客户端发送的数据
     this.cameraStatusCache2=[];//orange：取出缓存区中某个数据后，可以使用splice(0,1)删除这个数据
     this.preCameraStatus=null;//orange：对应cameraStatusCache1[0]中的数据，存放前一个发送给服务器视点信息，用于判断现在的视点是否和上一个视点重复
@@ -12,38 +12,49 @@ function ListStorage(){
     this.p2PData="";
 }
 ListStorage.prototype={
+    recurrence:function (str){//判断这个视点是否已经存在于列表中
+        for(var i=0;i<this.cameraStatus.length;i++)
+            if(this.cameraStatus[i]===str)return true
+        return false;
+    },
     //cache1
     //以下函数用于保存向服务器发送的数据
-    cameraStatusPushCache1:function (a,b,c,d,e,f){//将视点信息存入cache1//视点信息是一个字符串
-        this.preCameraStatus=[a,b,c,d,e,f];
-        this.cameraStatusCache1.push(a+","+b+","+c+","+d+","+e+","+f);
+    cameraStatusPushCache1:function (a,b,c,d,e,f,g){//将视点信息存入cache1//视点信息是一个字符串
+        this.preCameraStatus=[a,b,c,d,e,f,g];
+        this.cameraStatusCache1.push(a+","+b+","+c+","+d+","+e+","+f+","+g);
     },
-    isPreCameraStatus:function (a,b,c,d,e,f){
-        return this.preCameraStatus
+    isPreCameraStatus:function (a,b,c,d,e,f,g){
+        return this.preCameraStatus//preCameraStatus不能为空，为空说明这是第一个
             &&a===this.preCameraStatus[0]
             &&b===this.preCameraStatus[1]
             &&c===this.preCameraStatus[2]
             &&d===this.preCameraStatus[3]
             &&e===this.preCameraStatus[4]
-            &&f===this.preCameraStatus[5];
+            &&f===this.preCameraStatus[5]
+            &&g===this.preCameraStatus[6];
     },
     //以下函数用于处理服务器发来的数据
     listPushCache1:function (str){//向cache1存储资源名称数据
         this.listCache1.push(str);//str是资源名称
     },
     submitCache1:function (){//将cache1中的资源列表数据提交到list和cameraStatus中，并将这些数据拼接成字符串用于接下来发送给其他用户//完成了当前的资源列表,开始设置下一个资源列表
-        this.list.push(this.listCache1);
-        this.listCache1=[];
-        this.cameraStatus.push(this.cameraStatusCache1[0]);
-        this.cameraStatusCache1.splice(0,1);//将这个缓冲区看做一个队列
+        if(this.recurrence(this.cameraStatusCache1[0])){//如果这个视点在资料列表中存在
+            this.listCache1=[];//清空这个缓存区
+            this.cameraStatusCache1.splice(0,1);//删除这个视点信息
+        }else{//如果这个视点在资料列表中不存在
+            this.list.push(this.listCache1);
+            this.listCache1=[];
+            this.cameraStatus.push(this.cameraStatusCache1[0]);
+            this.cameraStatusCache1.splice(0,1);//将这个缓冲区看做一个队列
 
-        //以下将这些数据拼接成字符串，用于接下来通过P2P发送给其他用户
-        var index=this.list.length-1;
-        var mySendP2PData="";
-        mySendP2PData=mySendP2PData+this.cameraStatus[index]+"/";//cameraStatus
-        for(var i=0;i<this.list[index].length;i++)
-            mySendP2PData=mySendP2PData+this.list[index][i]+"/";
-        this.p2PData=mySendP2PData;
+            //以下将这些数据拼接成字符串，用于接下来通过P2P发送给其他用户
+            var index=this.list.length-1;
+            var mySendP2PData="";
+            mySendP2PData=mySendP2PData+this.cameraStatus[index]+"/";//cameraStatus
+            for(var i=0;i<this.list[index].length;i++)
+                mySendP2PData=mySendP2PData+this.list[index][i]+"/";
+            this.p2PData=mySendP2PData;
+        }
     },
     getP2PData:function (){//获取上一次submitCache1的处理结果
         return this.p2PData;
@@ -58,10 +69,15 @@ ListStorage.prototype={
         this.listCache2.push(str);
     },
     submitCache2:function (){//将cache2中的资源列表数据提交到list和cameraStatus中//下一个资源列表
-        this.list.push(this.listCache2);
-        this.listCache2=[];
-        this.cameraStatus.push(this.cameraStatusCache2[0]);
-        this.cameraStatusCache2.splice(0,1);//将这个缓冲区看做一个队列
+        if(this.recurrence(this.cameraStatusCache2[0])){//如果这个视点在资料列表中存在
+            this.listCache2=[];
+            this.cameraStatusCache2.splice(0,1);//将这个缓冲区看做一个队列
+        }else{//如果这个视点在资料列表中不存在
+            this.list.push(this.listCache2);
+            this.listCache2=[];
+            this.cameraStatus.push(this.cameraStatusCache2[0]);
+            this.cameraStatusCache2.splice(0,1);//将这个缓冲区看做一个队列
+        }
     },
 }
 
@@ -479,8 +495,8 @@ function syncClientDataToServer() {
     msg[9] = 10.0; // reserveParam2
 
 
-    if(!myListStorage.isPreCameraStatus(msg[1],msg[2],msg[3],msg[4],msg[5],msg[6])){
-        myListStorage.cameraStatusPushCache1(msg[1],msg[2],msg[3],msg[4],msg[5],msg[6]);
+    if(!myListStorage.isPreCameraStatus(msg[0],msg[1],msg[2],msg[3],msg[4],msg[5],msg[6])){
+        myListStorage.cameraStatusPushCache1(msg[0],msg[1],msg[2],msg[3],msg[4],msg[5],msg[6]);
     }
 
     ws.send(msg);
