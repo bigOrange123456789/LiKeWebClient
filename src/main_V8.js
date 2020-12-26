@@ -1,9 +1,85 @@
+//orange：设置资源列表管理对象
+function ListStorage(){
+    this.cameraStatus=[];//orange：成员为字符串//每个字符串分为6段
+    this.cameraStatusCache1=[];//orange：1号缓存区存放服务器发送的数据，2号缓存区存放其他客户端发送的数据
+    this.cameraStatusCache2=[];//orange：取出缓存区中某个数据后，可以使用splice(0,1)删除这个数据
+    this.preCameraStatus=null;//orange：对应cameraStatusCache1[0]中的数据，存放前一个发送给服务器视点信息，用于判断现在的视点是否和上一个视点重复
+
+    this.list=[];//orange：成员为字符串数组//每个成员由多个字符串构成
+    this.listCache1=[];//orange：1号缓存区存放服务器发送的数据，2号缓存区存放其他客户端发送的数据
+    this.listCache2=[];
+
+    this.p2PData="";
+}
+ListStorage.prototype={
+    cameraStatusPush:function (a,b,c,d,e,f){//视点信息是一个字符串
+        if(b===undefined){//只有一个输入
+            this.cameraStatusCache1.push(a);
+        }else{
+            this.preCameraStatus=[a,b,c,d,e,f];
+            this.cameraStatusCache1.push(a+","+b+","+c+","+d+","+e+","+f);
+        }
+    },
+    listPush:function (str){//向当前资源列表存储数据
+        this.listCache1.push(str);
+    },
+    listNext:function (){//将cache1中的资源列表数据存储到list和cameraStatus中，并将这些数据拼接成字符串用于接下来发送给其他用户//完成了当前的资源列表,开始设置下一个资源列表
+        this.list.push(this.listCache1);
+        this.listCache1=[];
+        this.cameraStatus.push(this.cameraStatusCache1[0]);
+        this.cameraStatusCache1.splice(0,1);//将这个缓冲区看做一个队列
+
+        //以下将这些数据拼接成字符串，用于接下来通过P2P发送给其他用户
+        var index=this.list.length-1;
+        var mySendP2PData="";
+        mySendP2PData=mySendP2PData+this.cameraStatus[index]+"/";//cameraStatus
+        for(var i=0;i<this.list[index].length;i++)
+            mySendP2PData=mySendP2PData+this.list[index][i]+"/";
+        this.p2PData=mySendP2PData;
+    },
+
+    cameraStatusPush2:function (a,b,c,d,e,f){//视点信息是一个字符串
+        if(b===undefined){//只有一个输入
+            this.cameraStatusCache2.push(a);
+        }else{
+            this.preCameraStatus=[a,b,c,d,e,f];
+            this.cameraStatusCache2.push(a+","+b+","+c+","+d+","+e+","+f);
+        }
+    },
+    listPush2:function (str){//向当前资源列表存储数据
+        this.listCache2.push(str);
+    },
+    listNext2:function (){//下一个资源列表
+        this.list.push(this.listCache2);
+        this.listCache2=[];
+        this.cameraStatus.push(this.cameraStatusCache2[0]);
+        this.cameraStatusCache2.splice(0,1);//将这个缓冲区看做一个队列
+    },
+
+    isPreCameraStatus:function (a,b,c,d,e,f){
+        return this.preCameraStatus
+            &&a===this.preCameraStatus[0]
+            &&b===this.preCameraStatus[1]
+            &&c===this.preCameraStatus[2]
+            &&d===this.preCameraStatus[3]
+            &&e===this.preCameraStatus[4]
+            &&f===this.preCameraStatus[5];
+    },
+
+    getP2PData:function (){//将list_index对应的视点信息和资源列表合并成字符串
+        return this.p2PData;
+    }
+}
+
+//orange：创建资源列表管理对象
+var myListStorage=new ListStorage();
+
 let sceneName = "hy";
 let scene, camera, renderer, controls, sceneRoot;
 let container,light, lightObj;
 let startTime = performance.now();
 let ws,interval;
-let host='100.64.211.63',port = 8081;
+let host='172.26.144.1',port = 8081;
 //let host='139.224.29.175',port = 8081;
 const webService = "Lcrs";
 const mWebClientExchangeCode = 4000;
@@ -35,10 +111,28 @@ connection.enableFileSharing = true; // by default, it is "false".
 connection.session = {
     data : true
 };
-connection.onmessage = function (event) {
+connection.onmessage = function (event) {//P2P接受他人发送的数据
     console.log("hhhhhhh\n");
-    let arr = new Uint8Array(JSON.parse(event.data));
-    console.log(arr);
+    //console.log(event.data);
+    var str=event.data;
+    if(str!="init_test"){//orange:刚建立连接时对方会发送一个用于连接测试的字符串，内容是"init_test"
+        var dataArr = str.split('/');
+        console.log(dataArr);
+
+        //orange:第一段数据是视点信息
+        myListStorage.cameraStatusPush2(dataArr[0]);//将视点信息，存入2号缓存区（1号缓存区存放服务器发送的数据，2号缓存区存放其他客户端发送的数据）
+
+        //orange:其余各段为资源名称
+        for(var k=1;k<dataArr.length-1;k++){//orange:最后一段信息为空
+            myListStorage.listPush2(dataArr[k]);
+        }
+
+        myListStorage.listNext2();
+        console.log("listNext",myListStorage)
+    }
+    //orange：下面这部分代码似乎没用，所以我就注释掉了
+    /*let arr = new Uint8Array(JSON.parse(event.data));
+    //console.log(arr);
     //glb file length info
     let glbLengthData = ab2str(arr.slice(0, sliceLength));
     //glb file
@@ -52,7 +146,7 @@ connection.onmessage = function (event) {
             continue;
         reuseDataParser(glbData.slice(totalLength, totalLength + 1.0 * glbLengthArr[i]));
         totalLength += 1.0 * glbLengthArr[i];
-    }
+    }*/
 };
 connection.onopen = function() {
     console.log("Open the connection");
@@ -250,15 +344,20 @@ function initWebsocketNetwork() {
         interval = setInterval(syncClientDataToServer,synFreq);
     };
     ws.onmessage = function (msg) {
-        console.log(performance.now());
+        //console.log(performance.now());
+        console.log("myListStorage",myListStorage);
+        //connection.send("456");//my p2p test
+
         var headerReader = new FileReader();
         headerReader.onload = function (e) {
             console.log(e.target.result);
             //get the buffer
             let arr = new Uint8Array(e.target.result);
 
-            if(connectionReady && packageIndex <= 2){
-                connection.send(JSON.stringify(Array.from(arr)));
+            if(connectionReady && packageIndex <= 2){//估计是刚建立P2P连接的时候执行一次
+                //connection.send(JSON.stringify(Array.from(arr)));////P2P向他人发送数据
+                //connection.send(JSON.stringify(["test1","test2"]));////P2P向他人发送数据
+                connection.send("init_test");////P2P向他人发送数据
                 packageIndex ++;
             }
 
@@ -272,6 +371,7 @@ function initWebsocketNetwork() {
             let totalLength = 0;
 
             let flag = false;
+            var myflag = false;
             for (let i = 0; i < glbLengthArr.length - 3; i++) {
                 if (!glbLengthArr[i])
                     continue;
@@ -280,7 +380,9 @@ function initWebsocketNetwork() {
                     scenetLoadDone = true;
                     flag = true;
                 }
-                reuseDataParser(glbData.slice(totalLength, totalLength + 1.0 * glbLengthArr[i]), flag);
+                if(glbLengthArr[glbLengthArr.length - 3]=='1'&&i == glbLengthArr.length - 4)myflag=true;
+                else myflag=false;//不是视点流的最后一个文件段
+                reuseDataParser(glbData.slice(totalLength, totalLength + 1.0 * glbLengthArr[i]), myflag);
                 flag = false;
                 totalLength += 1.0 * glbLengthArr[i];
             }
@@ -302,10 +404,18 @@ function initWebsocketNetwork() {
 }
 
 
-function reuseDataParser(data,flag) {
+function reuseDataParser(data,myflag) {
     gltfLoader.parse(data.buffer, './', (gltf) => {
         console.log(gltf);
         let name = gltf.parser.json.nodes[0].name;
+
+        myListStorage.listPush(name);
+        if(myflag){//flag为trus表示当前视点的数据流结束
+            myListStorage.listNext();//orange:将cache中的数据存放到真正的资源列表中
+            connection.send(myListStorage.getP2PData());
+            console.log("listNext",myListStorage)
+        }
+
         if (sceneRoot.getObjectByName(name))
             return;
         console.log(`scene add new model: ${name}`);
@@ -357,18 +467,28 @@ function syncClientDataToServer() {
     msg[1] = -camera.position.x;
     msg[2] = camera.position.y;
     msg[3] = camera.position.z;
+    //msg[1].toFixed(2); //=Math.floor(msg[1]*100)/100;//保留2位有效数字
+    //msg[2].toFixed(2); //=Math.floor(msg[1]*100)/100;
+    //msg[3].toFixed(2); //=Math.floor(msg[1]*100)/100;
 
     camera.getWorldDirection(cameraForward);
     msg[4] = -cameraForward.x;//-camera.rotation.x * 57.29578;
     msg[5] = cameraForward.y;//camera.rotation.y * 57.29578;
     msg[6] = cameraForward.z;//camera.rotation.z * 57.29578;
+    //msg[4].toFixed(2); //=Math.floor(msg[1]*100)/100;
+    //msg[5].toFixed(2); //=Math.floor(msg[1]*100)/100;
+    //msg[6].toFixed(2); //=Math.floor(msg[1]*100)/100;
 
     // Synchronize the position and rotation of main light
     msg[7] = 10.0; // reserveParam0
     msg[8] = 10.0; // reserveParam1
     msg[9] = 10.0; // reserveParam2
 
-    console.log(msg);
+
+    if(!myListStorage.isPreCameraStatus(msg[1],msg[2],msg[3],msg[4],msg[5],msg[6])){
+        myListStorage.cameraStatusPush(msg[1],msg[2],msg[3],msg[4],msg[5],msg[6]);
+    }
+
     ws.send(msg);
 }
 

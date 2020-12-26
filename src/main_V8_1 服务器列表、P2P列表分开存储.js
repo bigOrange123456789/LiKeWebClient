@@ -5,18 +5,26 @@ function ListStorage(){
     this.list_index=0;//初始值为0，每存储完一个视点的列表加1
 }
 var myListStorage=new ListStorage();
+var myListStorage2=new ListStorage();
 
 let sceneName = "hy";
 let scene, camera, renderer, controls, sceneRoot;
 let container,light, lightObj;
 let startTime = performance.now();
 let ws,interval;
-let host='100.64.211.63',port = 8081;
+let host='172.26.144.1',port = 8081;
+//let host='139.224.29.175',port = 8081;
 const webService = "Lcrs";
 const mWebClientExchangeCode = 4000;
 const sliceLength = 500,synFreq = 1500;
 let websocketReady = false;
-let scenetLoadDone = false, firstComponent = false;
+let scenetLoadDone = false, firstComponent = true;
+let packageIndex = 0;
+// $.get('http://47.102.121.80:3030',function(data){
+//     console.log(data);
+//     host = "" + data;
+//     initWebsocketNetwork();
+// });
 
 let radianceWidth = Math.floor(window.innerWidth/2), radianceHeight = Math.floor(window.innerHeight/2);
 let cameraForward = new THREE.Vector3();
@@ -26,18 +34,79 @@ THREE.DRACOLoader.setDecoderPath('./lib/draco/');
 THREE.DRACOLoader.setDecoderConfig({type: 'js'});
 gltfLoader.setDRACOLoader(new THREE.DRACOLoader());
 
+// /****************************************************************************
+//  * RTC
+//  ****************************************************************************/
+let connectionReady = false;
+var connection = new RTCMultiConnection();
+connection.socketURL = 'https://rtcmulticonnection.herokuapp.com:443/';
+connection.enableFileSharing = true; // by default, it is "false".
+connection.session = {
+    data : true
+};
+connection.onmessage = function (event) {//P2P接受他人发送的数据
+    console.log("hhhhhhh\n");
+    //console.log(event.data);
+    var str=event.data;
+    if(str!="init_test"){
+        var dataArr = str.split('/');
+        console.log(dataArr);
+
+        myListStorage2.cameraStatus[myListStorage2.list_index]= dataArr[0];
+
+        for(var k=1;k<dataArr.length-1;k++){
+            myListStorage2.list[myListStorage2.list_index].push(dataArr[k]);
+        }
+
+        myListStorage2.list_index++;
+        myListStorage2.list.push([]);
+    }
+    /*let arr = new Uint8Array(JSON.parse(event.data));
+    //console.log(arr);
+    //glb file length info
+    let glbLengthData = ab2str(arr.slice(0, sliceLength));
+    //glb file
+    let glbData = arr.slice(sliceLength);
+    //console.log(glbData);
+
+    let glbLengthArr = glbLengthData.split('/');
+    let totalLength = 0;
+    for (let i = 0; i < glbLengthArr.length - 3; i++) {
+        if (!glbLengthArr[i])
+            continue;
+        reuseDataParser(glbData.slice(totalLength, totalLength + 1.0 * glbLengthArr[i]));
+        totalLength += 1.0 * glbLengthArr[i];
+    }*/
+};
+connection.onopen = function() {
+    console.log("Open the connection");
+    connectionReady = true;
+};
+
+connection.onerror = function(){
+    console.log("error, try rejoin the connection");
+    connection.join(sceneName);
+};
+
+connection.onclose = function() {
+    console.log("Close the connection");
+    connectionReady = false;
+};
+
 init();
 animate();
 
-
-
 function init() {
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xffffff);
+    scene.background = new THREE.Color(0xaaaaaa);
     camera = new THREE.PerspectiveCamera(
         70, window.innerWidth / window.innerHeight, 0.3, 1000
     );
-    camera.position.set(0, 0, 30);
+    // camera.position.set(13, 12, 101);//newModel
+    // camera.position.set(-18.70847426521349, 77.60635231819737, -58.25531390414911);//hyModel
+    camera.position.set(-112, 59, 140);//cgm
+    // camera.position.set(61, 36, 98);//szt
+    // camera.position.set(0, 0, 30);
 
     // renderer
     container = document.getElementById("container");
@@ -48,17 +117,23 @@ function init() {
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     container.appendChild(renderer.domElement);
+
     // controls
     controls = new THREE.OrbitControls(
         camera, renderer.domElement
     );
+    // controls.target.set(16, 6, -61);//newModel
+    // controls.target.set(-2.3836122820563954, 46.38853167595469, 4.577373095370858);//hyModel
+    controls.target.set(11, -61, 3);//cgm
+    // controls.target.set(-28, 24, 10);//szt
     controls.saveState();
+
     scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
     light = new THREE.SpotLight(0xffffff);
     light.position.set(camera.position.x, camera.position.y, camera.position.z);
-    light.distance = 800;
-    light.intensity = 0.8;
+    light.distance = 1000;
+    light.intensity = 1.0;
     lightObj = new THREE.Object3D();
     lightObj.position.set(0, 0, 5);
     scene.add(lightObj);
@@ -73,60 +148,70 @@ function init() {
         0, 0, 0, 1
     ));
     scene.add(sceneRoot);
+
     scene.add(new THREE.AxesHelper(5));
+
     //scene.add(new THREE.Mesh(new THREE.BoxGeometry(10,10,10),new THREE.MeshPhongMaterial({color:0xffff00})));
+
     window.addEventListener('resize', synWindowSize, false);
+
     initWebsocketNetwork();
 }
 
+
 function makeInstanced(geo, mtxObj, oriName, type) {
-    //console.log(geo);
-    //console.log(mtxObj);{446=IfcColumn: Array(16), 540=IfcColumn: Array(16)}
-    //console.log(oriName);2336=IfcColumn
-    //console.log(type);//IfcColumn
     let mtxKeys = Object.keys(mtxObj);
     let instanceCount = mtxKeys.length + 1;
 
-    //生成mesh只需要两样东西，材质material和几何igeo
-    //1.material
+    // material
     var vert = document.getElementById('vertInstanced').textContent;
     var frag = document.getElementById('fragInstanced').textContent;
 
+    let color = selectMaterialByType(type,name);
     let myTexture = selectTextureByType(type,0.001);
 
-    var uniforms={
-        texture:{type: 't', value: myTexture}
-    };
+    // var uniforms = {
+    //     texture: {type: 't', value: myTexture}
+    // };
     var material = new THREE.RawShaderMaterial({
-        uniforms: uniforms,
+        // uniforms: uniforms,
         vertexShader: vert,
         fragmentShader: frag
     });
-
-    //2.igeo几何//InstancedBufferGeometry//将原网格中的geo拷贝到igeo中
-    var igeo=new THREE.InstancedBufferGeometry();//geometry//threeJS中有一种对象叫InstancedMesh，构造方法为InstancedMesh( geometry : BufferGeometry, material : Material, count : Integer )
+    // geometry
+    var igeo = new THREE.InstancedBufferGeometry();
 
     var vertices = geo.attributes.position.clone();
-    igeo.addAttribute('position', vertices);//设置几何中的点
+    igeo.addAttribute('position', vertices);
     igeo.setIndex(geo.index);
-    var mcol0=new THREE.InstancedBufferAttribute(new Float32Array(instanceCount * 3), 3);
-    var mcol1=new THREE.InstancedBufferAttribute(new Float32Array(instanceCount * 3), 3);
-    var mcol2=new THREE.InstancedBufferAttribute(new Float32Array(instanceCount * 3), 3);
-    var mcol3=new THREE.InstancedBufferAttribute(new Float32Array(instanceCount * 3), 3);
-    mcol0.setXYZ(0, 1, 0, 0);//设置原始mesh的变换矩阵与名称
+    var mcol0 = new THREE.InstancedBufferAttribute(
+        new Float32Array(instanceCount * 3), 3
+    );
+    var mcol1 = new THREE.InstancedBufferAttribute(
+        new Float32Array(instanceCount * 3), 3
+    );
+    var mcol2 = new THREE.InstancedBufferAttribute(
+        new Float32Array(instanceCount * 3), 3
+    );
+    var mcol3 = new THREE.InstancedBufferAttribute(
+        new Float32Array(instanceCount * 3), 3
+    );
+
+    //设置原始mesh的变换矩阵与名称
+    //setXYZ(i,x,y,z)
+    mcol0.setXYZ(0, 1, 0, 0);
     mcol1.setXYZ(0, 0, 1, 0);
     mcol2.setXYZ(0, 0, 0, 1);
     mcol3.setXYZ(0, 0, 0, 0);
-
     let instancedMeshName = oriName;
-    for (let i = 1, ul = instanceCount; i < ul; i++){
+    for (let i = 1, ul = instanceCount; i < ul; i++) {
         let currentName = mtxKeys[i - 1];
         let mtxElements = mtxObj[currentName];
         mcol0.setXYZ(i, mtxElements[0], mtxElements[1], mtxElements[2]);
         mcol1.setXYZ(i, mtxElements[4], mtxElements[5], mtxElements[6]);
         mcol2.setXYZ(i, mtxElements[8], mtxElements[9], mtxElements[10]);
         mcol3.setXYZ(i, mtxElements[12], mtxElements[13], mtxElements[14]);
-        instancedMeshName+=('_' + currentName);
+        instancedMeshName += ('_' + currentName);
     }
     igeo.addAttribute('mcol0', mcol0);
     igeo.addAttribute('mcol1', mcol1);
@@ -136,13 +221,22 @@ function makeInstanced(geo, mtxObj, oriName, type) {
     var colors = new THREE.InstancedBufferAttribute(
         new Float32Array(instanceCount * 3), 3
     );
-    for (let i = 0, ul = colors.count; i < ul; i++) {// colors.setXYZ(i, color.r, color.g, color.b);
-        colors.setXYZ(i, 0.33, 0.33, 0.33);
+    for (let i = 0, ul = colors.count; i < ul; i++) {
+        colors.setXYZ(i, color.r, color.g, color.b);
+        // colors.setXYZ(i, 0.33, 0.33, 0.33);
     }
     igeo.addAttribute('color', colors);
 
-    //3.mesh
-    var mesh = new THREE.Mesh(igeo, material);//生成的还是mesh对象
+    // var uvs = new THREE.InstancedBufferAttribute(
+    // new Float32Array(geo.attributes.uv.length * instanceCount), 2
+    // );
+    // for (let i = 0, ul = instanceCount; i < ul; i++) {
+    // uvs.set(geo.attributes.uv.array, geo.attributes.uv.length * i);
+    // }
+    // igeo.addAttribute('uv', geo.attributes.uv.clone());
+
+    // mesh
+    var mesh = new THREE.Mesh(igeo, material);
     mesh.scale.set(0.001, 0.001, 0.001);
     mesh.material.side = THREE.DoubleSide;
     mesh.frustumCulled = false;
@@ -150,39 +244,12 @@ function makeInstanced(geo, mtxObj, oriName, type) {
     sceneRoot.add(mesh);
 }
 
-function myTest(){
-    var geo=new THREE.CylinderGeometry(1,1,50,50,5);
-
-    /*var igeo=new THREE.InstancedBufferGeometry();
-    var vertices = geo.attributes.position.clone();
-    igeo.addAttribute('position', vertices);//设置几何中的点
-    igeo.setIndex(geo.index);
-
-    var mcol0,mcol1,mcol2,mcol3;
-    mcol0=mcol1=mcol2=mcol3=new THREE.InstancedBufferAttribute(
-        new Float32Array(instanceCount * 3), 3
-    );
-    mcol0.setXYZ(0, 1, 0, 0);//设置原始mesh的变换矩阵与名称
-    mcol1.setXYZ(0, 0, 1, 0);//四元数、齐次坐标
-    mcol2.setXYZ(0, 0, 0, 1);
-    mcol3.setXYZ(0, 0, 0, 0);//这16个数字构成了一个4*4的矩阵
-    igeo.addAttribute('mcol0', mcol0);//四元数、齐次坐标
-    igeo.addAttribute('mcol1', mcol1);
-    igeo.addAttribute('mcol2', mcol2);
-    igeo.addAttribute('mcol3', mcol3);*/
-
-    var material= new THREE.MeshBasicMaterial({color:0x0f00f0, transparent: true,opacity: 0.5 });
-    var mesh= new THREE.Mesh(geo, material);
-    sceneRoot.add(mesh);
-    //alert(123);
-}myTest();
 
 function animate() {
     requestAnimationFrame(animate);
     $("#triNum")[0].innerText = renderer.info.render.triangles;
     renderer.render(scene, camera);
     updateLight();
-    controls.update();
 }
 
 
@@ -199,51 +266,56 @@ function updateLight() {
 }
 
 
-function initWebsocketNetwork() {//这个函数只被初始化的时候执行一次
+function initWebsocketNetwork() {
     ws = new WebSocket("ws://" + host + ":" + port + "/" + webService);
-    ws.onopen = function (event) {//只被初始化的时候执行一次
+    ws.onopen = function (event) {
         console.log("connect successfully");
         websocketReady = true;
         interval = setInterval(syncClientDataToServer,synFreq);
-        //myListStorage.cameraStatus.push([ camera.position,camera.rotation ]);
     };
-    ws.onmessage = function (msg) {//每隔一段时间就会被执行一次//应该是每间隔一个单位时间就通过视点收到一部分数据
-        console.log(performance.now());
+    ws.onmessage = function (msg) {
+        //console.log(performance.now());
         console.log("myListStorage",myListStorage);
+        console.log("myListStorage2",myListStorage2);
+        //connection.send("456");//my p2p test
+
         var headerReader = new FileReader();
         headerReader.onload = function (e) {
-            console.log(e.target.result);//这是收到的数据//输出类型 ArrayBuffer(5100)//似乎是一个超大的缓冲区
+            console.log(e.target.result);
             //get the buffer
-            let arr = new Uint8Array(e.target.result);//将数据转化为整数数组的形式
+            let arr = new Uint8Array(e.target.result);
+
+            if(connectionReady && packageIndex <= 2){//估计是刚建立P2P连接的时候执行一次
+                //connection.send(JSON.stringify(Array.from(arr)));////P2P向他人发送数据
+                //connection.send(JSON.stringify(["test1","test2"]));////P2P向他人发送数据
+                connection.send("init_test");////P2P向他人发送数据
+                packageIndex ++;
+            }
 
             // glb file length info
-            let glbLengthData = ab2str(arr.slice(0, sliceLength));//文件的结束通过单斜线，包的结束通过双斜线//将前500个整数数据转化成字符串//sliceLength是一个固定值500
-            //  "1//"     "1152/1144/1164/1140/1148/1228/1176/1168/1164/1//"
-
+            let glbLengthData = ab2str(arr.slice(0, sliceLength));
             //glb file
-            let glbData = arr.slice(sliceLength);//slice函数的end被省略，截取从500开始到结束的全部数据
+            let glbData = arr.slice(sliceLength);
+            //console.log(glbData);
 
-            let glbLengthArr = glbLengthData.split('/');//表头通过 '/' 划分数据 //将字符串划分成字符串数组，遇到空字符串就可以结束了
+            let glbLengthArr = glbLengthData.split('/');
             let totalLength = 0;
 
             let flag = false;
-            var myflag;//判断这是否是视点流的最后一个文件段
-            for (let i = 0; i < glbLengthArr.length - 3; i++) {//最后三个字符串分别为： “1” “”  “  ”
-                if (!glbLengthArr[i])//如果长度为零
-                    continue;//跳过本次循环
-                if(!scenetLoadDone && glbLengthArr[glbLengthArr.length - 3]=='1' && i == glbLengthArr.length - 4)//貌似结尾为1\0表示是否结束
+            var myflag = false;
+            for (let i = 0; i < glbLengthArr.length - 3; i++) {
+                if (!glbLengthArr[i])
+                    continue;
+                if(!scenetLoadDone && glbLengthArr[glbLengthArr.length - 3]=='1' && i == glbLengthArr.length - 4)
                 {
-                    //scenetLoadDone似乎是用来判断场景是否被加载，刚开始是false，之后一直是true
-                    //glbLengthArr[glbLengthArr.length - 3]是否为1 标志着视点数据流是否结束
                     scenetLoadDone = true;
-                    flag = true;//记录这个视点的数据流是否结束
+                    flag = true;
                 }
                 if(glbLengthArr[glbLengthArr.length - 3]=='1'&&i == glbLengthArr.length - 4)myflag=true;
                 else myflag=false;//不是视点流的最后一个文件段
-                reuseDataParser( glbData.slice(totalLength, totalLength + 1.0 * glbLengthArr[i]),myflag);
-                //reuseDataParser(glbData.slice(totalLength, totalLength + 1.0 * glbLengthArr[i]), flag,myflag);//解析gltf文件
+                reuseDataParser(glbData.slice(totalLength, totalLength + 1.0 * glbLengthArr[i]), myflag);
                 flag = false;
-                totalLength += 1.0 * glbLengthArr[i];//totallength记录读取到哪里了
+                totalLength += 1.0 * glbLengthArr[i];
             }
         };
         headerReader.readAsArrayBuffer(msg.data);
@@ -262,43 +334,59 @@ function initWebsocketNetwork() {//这个函数只被初始化的时候执行一
     };
 }
 
+
 function reuseDataParser(data,myflag) {
-//function reuseDataParser(data,flag,myflag) {//这个函数被网络通信函数调用，估计是用于渲染场景
-    //这个函数只有一个功能，那就是使用下面这个方法加载gltf资源
-    //flag为true表示当前视点的数据流结束
-    gltfLoader.parse(data.buffer, './', (gltf) => {//将数据解析为gltf文件
+    gltfLoader.parse(data.buffer, './', (gltf) => {
         console.log(gltf);
         let name = gltf.parser.json.nodes[0].name;
 
         myListStorage.list[myListStorage.list_index].push(name);
+        //msg[1],msg[2],msg[3],msg[4],msg[5],msg[6]
         if(myflag){//flag为trus表示当前视点的数据流结束
+            var mySendP2PData="";
+            mySendP2PData=mySendP2PData+myListStorage.cameraStatus[myListStorage.list_index]+"/";//cameraStatus
+            for(var i=0;i<myListStorage.list[myListStorage.list_index].length;i++)
+                mySendP2PData=mySendP2PData+myListStorage.list[myListStorage.list_index][i]+"/";
+            //console.log(mySendP2PData)
+            connection.send(
+                mySendP2PData//"test"//
+            );
             myListStorage.list_index++;
             myListStorage.list.push([]);
-            myListStorage.cameraStatus.push([ camera.position,camera.rotation ]);
         }
 
-        if (sceneRoot.getObjectByName(name)) return;//如果场景中有这个资源就不需要再次渲染
+        if (sceneRoot.getObjectByName(name))
+            return;
         console.log(`scene add new model: ${name}`);
-        let geo = gltf.scene.children[0].geometry;//模型资源的几何结构
+        let geo = gltf.scene.children[0].geometry;
+        // Add uvs
+        // assignBufferUVs(geo);
         let matrixObj = gltf.parser.json.nodes[0].matrixArrs;
         let type = name.slice(name.indexOf('=') + 1);
-        if (matrixObj == undefined) {//如何这个资源没有被重用
+        if (matrixObj == undefined) {
             let mesh = gltf.scene.children[0];
             mesh.scale.set(0.001, 0.001, 0.001);
             mesh.name = name;
             let color = selectMaterialByType(type,name);
+            // let texture = selectTextureByType(type,0.001);
+            // mesh.material = new THREE.MeshPhongMaterial({
+            //     color: color, side: THREE.DoubleSide, map: texture,shininess:64});
             mesh.material.color = color;
             mesh.material.side = THREE.DoubleSide;
             sceneRoot.add(mesh);
-        } else {//如何这个资源没有被重用，如果这个资源被重用了使用实例化渲染技术
-            makeInstanced(geo, JSON.parse(matrixObj), name, type);//JSON.parse(matrixObj)估计是重用的数量
+        } else {
+            makeInstanced(geo, JSON.parse(matrixObj), name, type);
         }
         //first model
-        if(!firstComponent){
-            firstComponent = true;
+        if(firstComponent){
+            firstComponent = false;
             $("#firstModelLoadTime")[0].innerText = ((performance.now() - startTime) / 1000).toFixed(2) + "秒";
-            console.log("结束!!"+performance.now());
+            connection.openOrJoin(sceneName);
         }
+        // if(flag){
+        //     $("#LoadTime")[0].innerText = ((performance.now() - startTime) / 1000).toFixed(2) + "秒";
+        //     connection.openOrJoin(sceneName);
+        // }
     });
 }
 
@@ -306,7 +394,7 @@ function packHeader() {
     return radianceWidth * mWebClientExchangeCode + radianceHeight;
 }
 
-function syncClientDataToServer() {//这个函数似乎会被定时执行
+function syncClientDataToServer() {
     if(!websocketReady)
         return;
     var msg = new Float32Array(new ArrayBuffer(52));
@@ -318,32 +406,41 @@ function syncClientDataToServer() {//这个函数似乎会被定时执行
     msg[1] = -camera.position.x;
     msg[2] = camera.position.y;
     msg[3] = camera.position.z;
+    //msg[1].toFixed(2); //=Math.floor(msg[1]*100)/100;//保留2位有效数字
+    //msg[2].toFixed(2); //=Math.floor(msg[1]*100)/100;
+    //msg[3].toFixed(2); //=Math.floor(msg[1]*100)/100;
 
     camera.getWorldDirection(cameraForward);
     msg[4] = -cameraForward.x;//-camera.rotation.x * 57.29578;
     msg[5] = cameraForward.y;//camera.rotation.y * 57.29578;
     msg[6] = cameraForward.z;//camera.rotation.z * 57.29578;
+    //msg[4].toFixed(2); //=Math.floor(msg[1]*100)/100;
+    //msg[5].toFixed(2); //=Math.floor(msg[1]*100)/100;
+    //msg[6].toFixed(2); //=Math.floor(msg[1]*100)/100;
 
     // Synchronize the position and rotation of main light
     msg[7] = 10.0; // reserveParam0
     msg[8] = 10.0; // reserveParam1
     msg[9] = 10.0; // reserveParam2
 
+    var cameraStatus=msg[1]+","+msg[2]+","+msg[3]+","+msg[4]+","+msg[5]+","+msg[6];
+    console.log(cameraStatus);
     if(myListStorage.preCameraStatus==null
-     ||(myListStorage.preCameraStatus[0]===msg[1]&&
-        myListStorage.preCameraStatus[1]===msg[2]&&
-        myListStorage.preCameraStatus[2]===msg[3]&&
-        myListStorage.preCameraStatus[3]===msg[4]&&
-        myListStorage.preCameraStatus[4]===msg[5]&&
-        myListStorage.preCameraStatus[5]===msg[6]
-        )
+        ||myListStorage.preCameraStatus!=cameraStatus
     ){
-        myListStorage.cameraStatus.push([ msg[1],msg[2],msg[3],msg[4],msg[5],msg[6]  ]);
-        myListStorage.preCameraStatus=[ msg[1],msg[2],msg[3],msg[4],msg[5],msg[6]  ];
+        myListStorage.cameraStatus.push([//为了防止3个数连接成Vector3对象 和 Euler对象，所以逆置存放
+            cameraStatus
+            /*Math.floor(msg[6]*100)/100,
+            Math.floor(msg[5]*100)/100,
+            Math.floor(msg[4]*100)/100,
+            Math.floor(msg[3]*100)/100,
+            Math.floor(msg[2]*100)/100,
+            Math.floor(msg[1]*100)/100*/
+        ]);
+        myListStorage.preCameraStatus=[ cameraStatus  ];
     }
 
-
-    console.log(msg);//Float32Array(13) [1468387, -0, 1.8369700935892946e-15, 30, -0, -6.123234262925839e-17, -1, 10, 10, 10, 0, 0, 0]
+    console.log(msg);//发送给服务器的数据
     ws.send(msg);
 }
 
@@ -502,3 +599,72 @@ function ab2str(buf) {
     return String.fromCharCode.apply(null, new Uint8Array(buf));
 }
 
+function assignUVs(geometry, scale = 1.0) {
+    geometry.faceVertexUvs[0] = [];
+
+    geometry.computeFaceNormals();
+    geometry.faces.forEach(function (face) {
+        var components = ['x', 'y', 'z'].sort(function (a, b) {
+            return Math.abs(face.normal[a]) > Math.abs(face.normal[b]);
+        });
+
+        var v1 = geometry.vertices[face.a];
+        var v2 = geometry.vertices[face.b];
+        var v3 = geometry.vertices[face.c];
+
+        geometry.faceVertexUvs[0].push([
+            new THREE.Vector2(v1[components[0]], v1[components[1]]).multiplyScalar(scale),
+            new THREE.Vector2(v2[components[0]], v2[components[1]]).multiplyScalar(scale),
+            new THREE.Vector2(v3[components[0]], v3[components[1]]).multiplyScalar(scale)
+        ]);
+    });
+    geometry.uvsNeedUpdate = true;
+}
+
+
+function assignBufferUVs(bufferGeometry, scale = 1.0) {
+    let geometry = new THREE.Geometry();
+    geometry.fromBufferGeometry(bufferGeometry);
+
+    let uvs = [];
+    geometry.computeFaceNormals();
+    geometry.faces.forEach(function (face) {
+        var components = ['x', 'y', 'z'].sort(function (a, b) {
+            return Math.abs(face.normal[a]) > Math.abs(face.normal[b]);
+        });
+
+        var v1 = geometry.vertices[face.a];
+        var v2 = geometry.vertices[face.b];
+        var v3 = geometry.vertices[face.c];
+
+        uvs.push(v1[components[0]] * scale, v1[components[1]] * scale);
+        uvs.push(v2[components[0]] * scale, v2[components[1]] * scale);
+        uvs.push(v3[components[0]] * scale, v3[components[1]] * scale);
+    });
+    let uvArray = new Float32Array(uvs);
+    bufferGeometry.addAttribute('uv', new THREE.BufferAttribute(uvArray, 2));
+    bufferGeometry.uvsNeedUpdate = true;
+}
+
+
+function step(ori,dis){
+    switch(ori){
+        case 0://x axis
+            let right = new THREE.Vector3(1,0,0).applyMatrix4(camera.matrixWorld).sub(camera.position).normalize().multiplyScalar(dis);
+            camera.position.add(right);
+            controls.target.add(right);
+            break;
+        case 1://y axis
+            let up = new THREE.Vector3(0,1,0).applyMatrix4(camera.matrixWorld).sub(camera.position).normalize().multiplyScalar(dis);
+            camera.position.add(up);
+            controls.target.add(up);
+            break;
+        case 2://z axis
+            let zoomIn = new THREE.Vector3(0,0,-1).applyMatrix4(camera.matrixWorld).sub(camera.position).normalize().multiplyScalar(dis);
+            camera.position.add(zoomIn);
+            controls.target.add(zoomIn);
+            break;
+        default:
+            break;
+    }
+}
