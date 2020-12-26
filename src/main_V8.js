@@ -12,18 +12,26 @@ function ListStorage(){
     this.p2PData="";
 }
 ListStorage.prototype={
-    cameraStatusPush:function (a,b,c,d,e,f){//视点信息是一个字符串
-        if(b===undefined){//只有一个输入
-            this.cameraStatusCache1.push(a);
-        }else{
-            this.preCameraStatus=[a,b,c,d,e,f];
-            this.cameraStatusCache1.push(a+","+b+","+c+","+d+","+e+","+f);
-        }
+    //cache1
+    //以下函数用于保存向服务器发送的数据
+    cameraStatusPushCache1:function (a,b,c,d,e,f){//将视点信息存入cache1//视点信息是一个字符串
+        this.preCameraStatus=[a,b,c,d,e,f];
+        this.cameraStatusCache1.push(a+","+b+","+c+","+d+","+e+","+f);
     },
-    listPush:function (str){//向当前资源列表存储数据
-        this.listCache1.push(str);
+    isPreCameraStatus:function (a,b,c,d,e,f){
+        return this.preCameraStatus
+            &&a===this.preCameraStatus[0]
+            &&b===this.preCameraStatus[1]
+            &&c===this.preCameraStatus[2]
+            &&d===this.preCameraStatus[3]
+            &&e===this.preCameraStatus[4]
+            &&f===this.preCameraStatus[5];
     },
-    listNext:function (){//将cache1中的资源列表数据存储到list和cameraStatus中，并将这些数据拼接成字符串用于接下来发送给其他用户//完成了当前的资源列表,开始设置下一个资源列表
+    //以下函数用于处理服务器发来的数据
+    listPushCache1:function (str){//向cache1存储资源名称数据
+        this.listCache1.push(str);//str是资源名称
+    },
+    submitCache1:function (){//将cache1中的资源列表数据提交到list和cameraStatus中，并将这些数据拼接成字符串用于接下来发送给其他用户//完成了当前的资源列表,开始设置下一个资源列表
         this.list.push(this.listCache1);
         this.listCache1=[];
         this.cameraStatus.push(this.cameraStatusCache1[0]);
@@ -37,38 +45,24 @@ ListStorage.prototype={
             mySendP2PData=mySendP2PData+this.list[index][i]+"/";
         this.p2PData=mySendP2PData;
     },
-
-    cameraStatusPush2:function (a,b,c,d,e,f){//视点信息是一个字符串
-        if(b===undefined){//只有一个输入
-            this.cameraStatusCache2.push(a);
-        }else{
-            this.preCameraStatus=[a,b,c,d,e,f];
-            this.cameraStatusCache2.push(a+","+b+","+c+","+d+","+e+","+f);
-        }
+    getP2PData:function (){//获取上一次submitCache1的处理结果
+        return this.p2PData;
     },
-    listPush2:function (str){//向当前资源列表存储数据
+
+    //cache2
+    //以下函数用于处理其他用户通过P2P发来的数据
+    cameraStatusPushCache2:function (a){//将视点信息存入cache2//视点信息是一个字符串
+        this.cameraStatusCache2.push(a);
+    },
+    listPushCache2:function (str){//向当前资源列表存储数据
         this.listCache2.push(str);
     },
-    listNext2:function (){//下一个资源列表
+    submitCache2:function (){//将cache2中的资源列表数据提交到list和cameraStatus中//下一个资源列表
         this.list.push(this.listCache2);
         this.listCache2=[];
         this.cameraStatus.push(this.cameraStatusCache2[0]);
         this.cameraStatusCache2.splice(0,1);//将这个缓冲区看做一个队列
     },
-
-    isPreCameraStatus:function (a,b,c,d,e,f){
-        return this.preCameraStatus
-            &&a===this.preCameraStatus[0]
-            &&b===this.preCameraStatus[1]
-            &&c===this.preCameraStatus[2]
-            &&d===this.preCameraStatus[3]
-            &&e===this.preCameraStatus[4]
-            &&f===this.preCameraStatus[5];
-    },
-
-    getP2PData:function (){//将list_index对应的视点信息和资源列表合并成字符串
-        return this.p2PData;
-    }
 }
 
 //orange：创建资源列表管理对象
@@ -120,15 +114,15 @@ connection.onmessage = function (event) {//P2P接受他人发送的数据
         console.log(dataArr);
 
         //orange:第一段数据是视点信息
-        myListStorage.cameraStatusPush2(dataArr[0]);//将视点信息，存入2号缓存区（1号缓存区存放服务器发送的数据，2号缓存区存放其他客户端发送的数据）
+        myListStorage.cameraStatusPushCache2(dataArr[0]);//将视点信息，存入2号缓存区（1号缓存区存放服务器发送的数据，2号缓存区存放其他客户端发送的数据）
 
         //orange:其余各段为资源名称
         for(var k=1;k<dataArr.length-1;k++){//orange:最后一段信息为空
-            myListStorage.listPush2(dataArr[k]);
+            myListStorage.listPushCache2(dataArr[k]);
         }
 
-        myListStorage.listNext2();
-        console.log("listNext",myListStorage)
+        myListStorage.submitCache2();
+        console.log("submitCache2",myListStorage)
     }
     //orange：下面这部分代码似乎没用，所以我就注释掉了
     /*let arr = new Uint8Array(JSON.parse(event.data));
@@ -409,11 +403,11 @@ function reuseDataParser(data,myflag) {
         console.log(gltf);
         let name = gltf.parser.json.nodes[0].name;
 
-        myListStorage.listPush(name);
+        myListStorage.listPushCache1(name);
         if(myflag){//flag为trus表示当前视点的数据流结束
-            myListStorage.listNext();//orange:将cache中的数据存放到真正的资源列表中
+            myListStorage.submitCache1();//orange:将cache中的数据存放到真正的资源列表中
             connection.send(myListStorage.getP2PData());
-            console.log("listNext",myListStorage)
+            console.log("submitCache1",myListStorage)
         }
 
         if (sceneRoot.getObjectByName(name))
@@ -486,7 +480,7 @@ function syncClientDataToServer() {
 
 
     if(!myListStorage.isPreCameraStatus(msg[1],msg[2],msg[3],msg[4],msg[5],msg[6])){
-        myListStorage.cameraStatusPush(msg[1],msg[2],msg[3],msg[4],msg[5],msg[6]);
+        myListStorage.cameraStatusPushCache1(msg[1],msg[2],msg[3],msg[4],msg[5],msg[6]);
     }
 
     ws.send(msg);
