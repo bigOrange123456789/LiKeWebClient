@@ -1,25 +1,28 @@
 //orange：设置资源列表管理对象
 function ListStorage(){
     this.cameraStatus=[];//orange：成员为字符串//每个字符串分为7段
-    this.cameraStatusCache1=[];//orange：1号缓存区存放服务器发送的数据，2号缓存区存放其他客户端发送的数据
-    this.cameraStatusCache2=[];//orange：取出缓存区中某个数据后，可以使用splice(0,1)删除这个数据
-    this.preCameraStatus=null;//orange：对应cameraStatusCache1[0]中的数据，存放前一个发送给服务器视点信息，用于判断现在的视点是否和上一个视点重复
-
     this.list=[];//orange：成员为字符串数组//每个成员由多个字符串构成
-    this.listCache1=[];//orange：1号缓存区存放服务器发送的数据，2号缓存区存放其他客户端发送的数据
-    this.listCache2=[];
 
-    this.p2PData="";
+    this.cameraStatusCache1=[];//orange：1号缓存区存放服务器发送的数据，
+    this.listCache1=[];//orange：1号缓存区存放服务器发送的数据，2号缓存区存放其他客户端发送的数据
+    this.preCameraStatus=null;//orange：对应cameraStatusCache1[0]中的数据，存放前一个发送给服务器视点信息，用于判断现在的视点是否和上一个视点重复
+    this.p2PData="";//临时存储需要向其他用户通过P2P发送的信息
+
+    this.cameraStatusCache2=[];//orange：2号缓存区存放其他客户端发送的数据。取出缓存区中某个数据后，可以使用splice(0,1)删除这个数据
+    this.listCache2=[];
 }
-ListStorage.prototype={
-    recurrence:function (str){//判断这个视点是否已经存在于列表中
+ListStorage.prototype={//外界只需要调用4个函数就可以实现所有工作：getList、saveServerData_send、saveServerData_accept、saveP2PData
+    getList:function (str,b,c,d,e,f,g){//通过视点信息来获取对应的资源列表调用方法为：getList(str)或者getList(a,b,c,d,e,f,g)
+        if(b!==undefined)str=str+b+c+d+e+f+g;
         for(var i=0;i<this.cameraStatus.length;i++)
-            if(this.cameraStatus[i]===str)return true
-        return false;
+            if(this.cameraStatus[i]===str)return this.list[i];
+        return [];
     },
+
     //cache1
     //以下函数用于保存向服务器发送的数据
     cameraStatusPushCache1:function (a,b,c,d,e,f,g){//将视点信息存入cache1//视点信息是一个字符串
+        if(this.isPreCameraStatus(a,b,c,d,e,f,g))return;//如果和上一个视点信息相同就不进行入栈
         this.preCameraStatus=[a,b,c,d,e,f,g];
         this.cameraStatusCache1.push(a+","+b+","+c+","+d+","+e+","+f+","+g);
     },
@@ -33,12 +36,15 @@ ListStorage.prototype={
             &&f===this.preCameraStatus[5]
             &&g===this.preCameraStatus[6];
     },
+    saveServerData_send:function (a,b,c,d,e,f,g){
+        this.cameraStatusPushCache1(a,b,c,d,e,f,g);
+    },
     //以下函数用于处理服务器发来的数据
     listPushCache1:function (str){//向cache1存储资源名称数据
         this.listCache1.push(str);//str是资源名称
     },
     submitCache1:function (){//将cache1中的资源列表数据提交到list和cameraStatus中，并将这些数据拼接成字符串用于接下来发送给其他用户//完成了当前的资源列表,开始设置下一个资源列表
-        if(this.recurrence(this.cameraStatusCache1[0])){//如果这个视点在资料列表中存在
+        if(this.getList(this.cameraStatusCache1[0])!=[]){//如果这个视点在资料列表中已经存在了，就不需要再次将缓存中的信息加入列表了
             this.listCache1=[];//清空这个缓存区
             this.cameraStatusCache1.splice(0,1);//删除这个视点信息
         }else{//如果这个视点在资料列表中不存在
@@ -59,6 +65,13 @@ ListStorage.prototype={
     getP2PData:function (){//获取上一次submitCache1的处理结果
         return this.p2PData;
     },
+    saveServerData_accept:function (BLGName,isLastGLB,p2pConnection){
+        this.listPushCache1(BLGName);//将文件名称存放到列表缓存区中
+        if(isLastGLB){//isLastGLB为true表示当前视点的数据流结束
+            this.submitCache1();//orange:将cache中的数据存放到真正的资源列表中
+            p2pConnection.send(this.getP2PData());
+        }
+    },
 
     //cache2
     //以下函数用于处理其他用户通过P2P发来的数据
@@ -69,7 +82,7 @@ ListStorage.prototype={
         this.listCache2.push(str);
     },
     submitCache2:function (){//将cache2中的资源列表数据提交到list和cameraStatus中//下一个资源列表
-        if(this.recurrence(this.cameraStatusCache2[0])){//如果这个视点在资料列表中存在
+        if(this.getList(this.cameraStatusCache2[0])!=[]){//如果这个视点在资料列表中存在
             this.listCache2=[];
             this.cameraStatusCache2.splice(0,1);//将这个缓冲区看做一个队列
         }else{//如果这个视点在资料列表中不存在
@@ -77,6 +90,19 @@ ListStorage.prototype={
             this.listCache2=[];
             this.cameraStatus.push(this.cameraStatusCache2[0]);
             this.cameraStatusCache2.splice(0,1);//将这个缓冲区看做一个队列
+        }
+    },
+    saveP2PData:function (event){
+        var str=event.data;
+        if(str!="init_test"){//orange:刚建立连接时对方会发送一个用于连接测试的字符串，内容是"init_test"
+            var dataArr = str.split('/');
+
+            //orange:第一段数据是视点信息
+            this.cameraStatusPushCache2(dataArr[0]);//将视点信息，存入2号缓存区（1号缓存区存放服务器发送的数据，2号缓存区存放其他客户端发送的数据）
+            //orange:其余各段为资源名称
+            for(var k=1;k<dataArr.length-1;k++)//orange:最后一段信息为空
+                this.listPushCache2(dataArr[k]);
+            this.submitCache2();
         }
     },
 }
@@ -124,22 +150,9 @@ connection.session = {
 connection.onmessage = function (event) {//P2P接受他人发送的数据
     console.log("hhhhhhh\n");
     //console.log(event.data);
-    var str=event.data;
-    if(str!="init_test"){//orange:刚建立连接时对方会发送一个用于连接测试的字符串，内容是"init_test"
-        var dataArr = str.split('/');
-        console.log(dataArr);
 
-        //orange:第一段数据是视点信息
-        myListStorage.cameraStatusPushCache2(dataArr[0]);//将视点信息，存入2号缓存区（1号缓存区存放服务器发送的数据，2号缓存区存放其他客户端发送的数据）
+    myListStorage.saveP2PData(event);
 
-        //orange:其余各段为资源名称
-        for(var k=1;k<dataArr.length-1;k++){//orange:最后一段信息为空
-            myListStorage.listPushCache2(dataArr[k]);
-        }
-
-        myListStorage.submitCache2();
-        console.log("submitCache2",myListStorage)
-    }
     //orange：下面这部分代码似乎没用，所以我就注释掉了
     /*let arr = new Uint8Array(JSON.parse(event.data));
     //console.log(arr);
@@ -419,12 +432,7 @@ function reuseDataParser(data,myflag) {
         console.log(gltf);
         let name = gltf.parser.json.nodes[0].name;
 
-        myListStorage.listPushCache1(name);
-        if(myflag){//flag为trus表示当前视点的数据流结束
-            myListStorage.submitCache1();//orange:将cache中的数据存放到真正的资源列表中
-            connection.send(myListStorage.getP2PData());
-            console.log("submitCache1",myListStorage)
-        }
+        myListStorage.saveServerData_accept(name,myflag,connection);
 
         if (sceneRoot.getObjectByName(name))
             return;
@@ -477,17 +485,11 @@ function syncClientDataToServer() {
     msg[1] = -camera.position.x;
     msg[2] = camera.position.y;
     msg[3] = camera.position.z;
-    //msg[1].toFixed(2); //=Math.floor(msg[1]*100)/100;//保留2位有效数字
-    //msg[2].toFixed(2); //=Math.floor(msg[1]*100)/100;
-    //msg[3].toFixed(2); //=Math.floor(msg[1]*100)/100;
 
     camera.getWorldDirection(cameraForward);
     msg[4] = -cameraForward.x;//-camera.rotation.x * 57.29578;
     msg[5] = cameraForward.y;//camera.rotation.y * 57.29578;
     msg[6] = cameraForward.z;//camera.rotation.z * 57.29578;
-    //msg[4].toFixed(2); //=Math.floor(msg[1]*100)/100;
-    //msg[5].toFixed(2); //=Math.floor(msg[1]*100)/100;
-    //msg[6].toFixed(2); //=Math.floor(msg[1]*100)/100;
 
     // Synchronize the position and rotation of main light
     msg[7] = 10.0; // reserveParam0
@@ -495,9 +497,8 @@ function syncClientDataToServer() {
     msg[9] = 10.0; // reserveParam2
 
 
-    if(!myListStorage.isPreCameraStatus(msg[0],msg[1],msg[2],msg[3],msg[4],msg[5],msg[6])){
-        myListStorage.cameraStatusPushCache1(msg[0],msg[1],msg[2],msg[3],msg[4],msg[5],msg[6]);
-    }
+    myListStorage.saveServerData_send(msg[0],msg[1],msg[2],msg[3],msg[4],msg[5],msg[6]);
+
 
     ws.send(msg);
 }
