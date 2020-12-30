@@ -110,9 +110,8 @@ ListStorage.prototype={//外界只需要调用4个函数就可以实现所有工
 //orange：设置封装管理资源列表对象的对象
 function ListStorageManage(){//对ListStorage对象进行了封装，屏蔽了内部私有参数和方法
     var listStorage=new ListStorage();
-    
-    this.getList=function (str,b,c,d,e,f,g){
-        //alert(str);
+
+    this.getList=function(str,b,c,d,e,f,g){
         return listStorage.getList(str,b,c,d,e,f,g);
     }
     this.saveServerData_send=function (a,b,c,d,e,f,g){
