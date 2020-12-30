@@ -1,4 +1,4 @@
-//orange：设置资源列表管理对象
+//orange：设置资源列表对象
 function ListStorage(){
     this.cameraStatus=[];//orange：成员为字符串//每个字符串分为7段
     this.list=[];//orange：成员为字符串数组//每个成员由多个字符串构成
@@ -12,8 +12,9 @@ function ListStorage(){
     this.listCache2=[];
 }
 ListStorage.prototype={//外界只需要调用4个函数就可以实现所有工作：getList、saveServerData_send、saveServerData_accept、saveP2PData
-    getList:function (str,b,c,d,e,f,g){//通过视点信息来获取对应的资源列表调用方法为：getList(str)或者getList(a,b,c,d,e,f,g)
-        if(b!==undefined)str=str+b+c+d+e+f+g;
+    getList:function (str,b,c,d,e,f,g){//通过视点信息来获取对应的资源列表调用方法为：getList(),getList(str),getList(a,b,c,d,e,f,g)
+        if(str===undefined)return [this.cameraStatus,this.list];//getList()//如果没有输入参数，返回整个资源列表//用于测试时，查看对象的内容
+        else if(b!==undefined)str=str+b+c+d+e+f+g;//getList(a,b,c,d,e,f,g)
         for(var i=0;i<this.cameraStatus.length;i++)
             if(this.cameraStatus[i]===str)return this.list[i];
         return [];
@@ -42,7 +43,6 @@ ListStorage.prototype={//外界只需要调用4个函数就可以实现所有工
     //以下函数用于处理服务器发来的数据
     listPushCache1:function (str){//向cache1存储资源名称数据
         this.listCache1.push(str);//str是资源名称
-        //console.log(this.listCache1);
     },
     submitCache1:function (){//将cache1中的资源列表数据提交到list和cameraStatus中，并将这些数据拼接成字符串用于接下来发送给其他用户//完成了当前的资源列表,开始设置下一个资源列表
         if(this.getList(this.cameraStatusCache1[0]).length!==0){//如果这个视点在资料列表中已经存在了，就不需要再次将缓存中的信息加入列表了
@@ -70,8 +70,7 @@ ListStorage.prototype={//外界只需要调用4个函数就可以实现所有工
         this.listPushCache1(BLGName);//将文件名称存放到列表缓存区中
         if(isLastGLB){//isLastGLB为true表示当前视点的数据流结束
             this.submitCache1();//orange:将cache中的数据存放到真正的资源列表中
-            console.log(this);
-            p2pConnection.send(this.getP2PData());
+            p2pConnection.send(this.getP2PData());//如果this.listCache2没有内容，即为[]这里会报错
         }
     },
 
@@ -108,8 +107,26 @@ ListStorage.prototype={//外界只需要调用4个函数就可以实现所有工
         }
     },
 }
+//orange：设置封装管理资源列表对象的对象
+function ListStorageManage(){//对ListStorage对象进行了封装，屏蔽了内部私有参数和方法
+    var listStorage=new ListStorage();
+    
+    this.getList=function (str,b,c,d,e,f,g){
+        //alert(str);
+        return listStorage.getList(str,b,c,d,e,f,g);
+    }
+    this.saveServerData_send=function (a,b,c,d,e,f,g){
+        listStorage.saveServerData_send(a,b,c,d,e,f,g);
+    }
+    this.saveServerData_accept=function (BLGName,isLastGLB,p2pConnection){
+        listStorage.saveServerData_accept(BLGName,isLastGLB,p2pConnection);
+    }
+    this.saveP2PData=function (a,b,c,d,e,f,g){
+        listStorage.saveP2PData(a,b,c,d,e,f,g);
+    }
+}
 //orange：创建资源列表管理对象
-var myListStorage=new ListStorage();
+var myListStorage=new ListStorageManage();
 
 let sceneName = "hy";
 let scene, camera, renderer, controls, sceneRoot;
@@ -370,7 +387,7 @@ function initWebsocketNetwork() {
     };
     ws.onmessage = function (msg) {
         //console.log(performance.now());
-        console.log("myListStorage",myListStorage);
+        console.log("listStorage",myListStorage.getList());//orange:输出内容结构，查看是否和预期的结果一致
         //connection.send("456");//my p2p test
 
         var headerReader = new FileReader();
