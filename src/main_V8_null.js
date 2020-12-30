@@ -42,10 +42,9 @@ ListStorage.prototype={//外界只需要调用4个函数就可以实现所有工
     //以下函数用于处理服务器发来的数据
     listPushCache1:function (str){//向cache1存储资源名称数据
         this.listCache1.push(str);//str是资源名称
-        //console.log(this.listCache1);
     },
     submitCache1:function (){//将cache1中的资源列表数据提交到list和cameraStatus中，并将这些数据拼接成字符串用于接下来发送给其他用户//完成了当前的资源列表,开始设置下一个资源列表
-        if(this.getList(this.cameraStatusCache1[0]).length!==0){//如果这个视点在资料列表中已经存在了，就不需要再次将缓存中的信息加入列表了
+        if(this.getList(this.cameraStatusCache1[0])!=[]){//如果这个视点在资料列表中已经存在了，就不需要再次将缓存中的信息加入列表了
             this.listCache1=[];//清空这个缓存区
             this.cameraStatusCache1.splice(0,1);//删除这个视点信息
         }else{//如果这个视点在资料列表中不存在
@@ -70,7 +69,6 @@ ListStorage.prototype={//外界只需要调用4个函数就可以实现所有工
         this.listPushCache1(BLGName);//将文件名称存放到列表缓存区中
         if(isLastGLB){//isLastGLB为true表示当前视点的数据流结束
             this.submitCache1();//orange:将cache中的数据存放到真正的资源列表中
-            console.log(this);
             p2pConnection.send(this.getP2PData());
         }
     },
@@ -84,7 +82,7 @@ ListStorage.prototype={//外界只需要调用4个函数就可以实现所有工
         this.listCache2.push(str);
     },
     submitCache2:function (){//将cache2中的资源列表数据提交到list和cameraStatus中//下一个资源列表
-        if(this.getList(this.cameraStatusCache2[0]).length!==0){//如果这个视点在资料列表中存在
+        if(this.getList(this.cameraStatusCache2[0])!=[]){//如果这个视点在资料列表中存在
             this.listCache2=[];
             this.cameraStatusCache2.splice(0,1);//将这个缓冲区看做一个队列
         }else{//如果这个视点在资料列表中不存在
@@ -108,6 +106,15 @@ ListStorage.prototype={//外界只需要调用4个函数就可以实现所有工
         }
     },
 }
+/*function ListStorageManage(){
+    this.listStorage=new ListStorage();
+}
+ListStorageManage.prototype={
+    getList:this.listStorage.prototype.getList,
+    saveServerData_send:this.listStorage.prototype.saveServerData_send,
+    saveServerData_accept:this.listStorage.prototype.saveServerData_accept,
+    saveP2PData:this.listStorage.prototype.saveP2PData,
+}*/
 //orange：创建资源列表管理对象
 var myListStorage=new ListStorage();
 
